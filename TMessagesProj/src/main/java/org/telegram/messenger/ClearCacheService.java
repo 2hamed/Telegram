@@ -27,6 +27,8 @@ public class ClearCacheService extends IntentService {
 
     @Override
     protected void onHandleIntent(Intent intent) {
+        ApplicationLoader.postInitApplication();
+
         SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
         final int keepMedia = preferences.getInt("keep_media", 2);
         if (keepMedia == 2) {
@@ -48,6 +50,9 @@ public class ClearCacheService extends IntentService {
                             for (int b = 0; b < array.length; b++) {
                                 File f = array[b];
                                 if (f.isFile()) {
+                                    if (f.getName().equals(".nomedia")) {
+                                        continue;
+                                    }
                                     if (Build.VERSION.SDK_INT >= 21) {
                                         try {
                                             StructStat stat = Os.stat(f.getPath());

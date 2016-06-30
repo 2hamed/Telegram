@@ -47,7 +47,6 @@ import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.AvatarUpdater;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.ActionBar.BaseFragment;
-import org.telegram.ui.Components.FrameLayoutFixed;
 import org.telegram.ui.Components.LayoutHelper;
 
 import java.util.ArrayList;
@@ -164,7 +163,7 @@ public class GroupCreateFinalActivity extends BaseFragment implements Notificati
                     donePressed = true;
 
                     if (chatType == ChatObject.CHAT_TYPE_BROADCAST) {
-                        MessagesController.getInstance().createChat(nameTextView.getText().toString(), selectedContacts, null, chatType);
+                        MessagesController.getInstance().createChat(nameTextView.getText().toString(), selectedContacts, null, chatType, GroupCreateFinalActivity.this);
                     } else {
                         if (avatarUpdater.uploadingAvatar != null) {
                             createAfterUpload = true;
@@ -174,7 +173,7 @@ public class GroupCreateFinalActivity extends BaseFragment implements Notificati
                             progressDialog.setCanceledOnTouchOutside(false);
                             progressDialog.setCancelable(false);
 
-                            final int reqId = MessagesController.getInstance().createChat(nameTextView.getText().toString(), selectedContacts, null, chatType);
+                            final int reqId = MessagesController.getInstance().createChat(nameTextView.getText().toString(), selectedContacts, null, chatType, GroupCreateFinalActivity.this);
 
                             progressDialog.setButton(DialogInterface.BUTTON_NEGATIVE, LocaleController.getString("Cancel", R.string.Cancel), new DialogInterface.OnClickListener() {
                                 @Override
@@ -202,7 +201,7 @@ public class GroupCreateFinalActivity extends BaseFragment implements Notificati
         LinearLayout linearLayout = (LinearLayout) fragmentView;
         linearLayout.setOrientation(LinearLayout.VERTICAL);
 
-        FrameLayout frameLayout = new FrameLayoutFixed(context);
+        FrameLayout frameLayout = new FrameLayout(context);
         linearLayout.addView(frameLayout);
         LinearLayout.LayoutParams layoutParams = (LinearLayout.LayoutParams) frameLayout.getLayoutParams();
         layoutParams.width = LayoutHelper.MATCH_PARENT;
@@ -335,7 +334,7 @@ public class GroupCreateFinalActivity extends BaseFragment implements Notificati
                 avatarImage.setImage(avatar, "50_50", avatarDrawable);
                 if (createAfterUpload) {
                     FileLog.e("tmessages", "avatar did uploaded");
-                    MessagesController.getInstance().createChat(nameTextView.getText().toString(), selectedContacts, null, chatType);
+                    MessagesController.getInstance().createChat(nameTextView.getText().toString(), selectedContacts, null, chatType, GroupCreateFinalActivity.this);
                 }
             }
         });
@@ -450,7 +449,7 @@ public class GroupCreateFinalActivity extends BaseFragment implements Notificati
         @Override
         public View getView(int i, View view, ViewGroup viewGroup) {
             if (view == null) {
-                view = new UserCell(mContext, 1, 0);
+                view = new UserCell(mContext, 1, 0, false);
             }
 
             TLRPC.User user = MessagesController.getInstance().getUser(selectedContacts.get(i));

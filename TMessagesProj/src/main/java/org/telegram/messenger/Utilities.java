@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 
 public class Utilities {
 
-    public static Pattern pattern = Pattern.compile("[0-9]+");
+    public static Pattern pattern = Pattern.compile("[\\-0-9]+");
     public static SecureRandom random = new SecureRandom();
 
     public static volatile DispatchQueue stageQueue = new DispatchQueue("stageQueue");
@@ -47,12 +47,13 @@ public class Utilities {
 
     public native static void loadBitmap(String path, Bitmap bitmap, int scale, int width, int height, int stride);
     public native static int pinBitmap(Bitmap bitmap);
-    public native static int unpinBitmap(Bitmap bitmap);
+    public native static void unpinBitmap(Bitmap bitmap);
     public native static void blurBitmap(Object bitmap, int radius, int unpin, int width, int height, int stride);
     public native static void calcCDT(ByteBuffer hsvBuffer, int width, int height, ByteBuffer buffer);
     public native static boolean loadWebpImage(Bitmap bitmap, ByteBuffer buffer, int len, BitmapFactory.Options options, boolean unpin);
     public native static int convertVideoFrame(ByteBuffer src, ByteBuffer dest, int destFormat, int width, int height, int padding, int swap);
     private native static void aesIgeEncryption(ByteBuffer buffer, byte[] key, byte[] iv, boolean encrypt, int offset, int length);
+    public native static String readlink(String path);
 
     public static void aesIgeEncryption(ByteBuffer buffer, byte[] key, byte[] iv, boolean encrypt, boolean changeIv, int offset, int length) {
         aesIgeEncryption(buffer, key, changeIv ? iv : iv.clone(), encrypt, offset, length);
@@ -254,8 +255,8 @@ public class Utilities {
             java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
             byte[] array = md.digest(md5.getBytes());
             StringBuilder sb = new StringBuilder();
-            for (byte anArray : array) {
-                sb.append(Integer.toHexString((anArray & 0xFF) | 0x100).substring(1, 3));
+            for (int a = 0; a < array.length; a++) {
+                sb.append(Integer.toHexString((array[a] & 0xFF) | 0x100).substring(1, 3));
             }
             return sb.toString();
         } catch (java.security.NoSuchAlgorithmException e) {

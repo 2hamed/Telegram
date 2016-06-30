@@ -309,7 +309,7 @@ public class LocaleController {
         return systemDefaultLocale;
     }
 
-    public static String getLocaleString(Locale locale) {
+    private String getLocaleString(Locale locale) {
         if (locale == null) {
             return "en";
         }
@@ -323,6 +323,30 @@ public class LocaleController {
         result.append(languageCode);
         if (countryCode.length() > 0 || variantCode.length() > 0) {
             result.append('_');
+        }
+        result.append(countryCode);
+        if (variantCode.length() > 0) {
+            result.append('_');
+        }
+        result.append(variantCode);
+        return result.toString();
+    }
+
+    public static String getLocaleStringIso639() {
+        Locale locale = getInstance().getSystemDefaultLocale();
+        if (locale == null) {
+            return "en";
+        }
+        String languageCode = locale.getLanguage();
+        String countryCode = locale.getCountry();
+        String variantCode = locale.getVariant();
+        if (languageCode.length() == 0 && countryCode.length() == 0) {
+            return "en";
+        }
+        StringBuilder result = new StringBuilder(11);
+        result.append(languageCode);
+        if (countryCode.length() > 0 || variantCode.length() > 0) {
+            result.append('-');
         }
         result.append(countryCode);
         if (variantCode.length() > 0) {
@@ -350,7 +374,7 @@ public class LocaleController {
                 if (languageNameInEnglish.contains("&") || languageNameInEnglish.contains("|")) {
                     return false;
                 }
-                if (languageCode.contains("&") || languageCode.contains("|")) {
+                if (languageCode.contains("&") || languageCode.contains("|") || languageCode.contains("/") || languageCode.contains("\\")) {
                     return false;
                 }
 
@@ -583,7 +607,11 @@ public class LocaleController {
     private String getStringInternal(String key, int res) {
         String value = localeValues.get(key);
         if (value == null) {
-            value = ApplicationLoader.applicationContext.getString(res);
+            try {
+                value = ApplicationLoader.applicationContext.getString(res);
+            } catch (Exception e) {
+                FileLog.e("tmessages", e);
+            }
         }
         if (value == null) {
             value = "LOC_ERR:" + key;
@@ -664,16 +692,21 @@ public class LocaleController {
     }
 
     public static String formatDateChat(long date) {
-        Calendar rightNow = Calendar.getInstance();
-        int year = rightNow.get(Calendar.YEAR);
+        try {
+            Calendar rightNow = Calendar.getInstance();
+            int year = rightNow.get(Calendar.YEAR);
 
-        rightNow.setTimeInMillis(date * 1000);
-        int dateYear = rightNow.get(Calendar.YEAR);
+            rightNow.setTimeInMillis(date * 1000);
+            int dateYear = rightNow.get(Calendar.YEAR);
 
-        if (year == dateYear) {
-            return getInstance().chatDate.format(date * 1000);
+            if (year == dateYear) {
+                return getInstance().chatDate.format(date * 1000);
+            }
+            return getInstance().chatFullDate.format(date * 1000);
+        } catch (Exception e) {
+            FileLog.e("tmessages", e);
         }
-        return getInstance().chatFullDate.format(date * 1000);
+        return "LOC_ERR: formatDateChat";
     }
 
     public static String formatDate(long date) {
@@ -693,6 +726,30 @@ public class LocaleController {
                 return getInstance().formatterMonth.format(new Date(date * 1000));
             } else {
                 return getInstance().formatterYear.format(new Date(date * 1000));
+            }
+        } catch (Exception e) {
+            FileLog.e("tmessages", e);
+        }
+        return "LOC_ERR: formatDate";
+    }
+
+    public static String formatDateAudio(long date) {
+        try {
+            Calendar rightNow = Calendar.getInstance();
+            int day = rightNow.get(Calendar.DAY_OF_YEAR);
+            int year = rightNow.get(Calendar.YEAR);
+            rightNow.setTimeInMillis(date * 1000);
+            int dateDay = rightNow.get(Calendar.DAY_OF_YEAR);
+            int dateYear = rightNow.get(Calendar.YEAR);
+
+            if (dateDay == day && year == dateYear) {
+                return String.format("%s %s", LocaleController.getString("TodayAt", R.string.TodayAt), getInstance().formatterDay.format(new Date(date * 1000)));
+            } else if (dateDay + 1 == day && year == dateYear) {
+                return String.format("%s %s", LocaleController.getString("YesterdayAt", R.string.YesterdayAt), getInstance().formatterDay.format(new Date(date * 1000)));
+            } else if (year == dateYear) {
+                return LocaleController.formatString("formatDateAtTime", R.string.formatDateAtTime, getInstance().formatterMonth.format(new Date(date * 1000)), getInstance().formatterDay.format(new Date(date * 1000)));
+            } else {
+                return LocaleController.formatString("formatDateAtTime", R.string.formatDateAtTime, getInstance().formatterYear.format(new Date(date * 1000)), getInstance().formatterDay.format(new Date(date * 1000)));
             }
         } catch (Exception e) {
             FileLog.e("tmessages", e);

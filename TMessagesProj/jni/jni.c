@@ -5,8 +5,8 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <openssl/aes.h>
+#include <unistd.h>
 #include "utils.h"
-#include "sqlite.h"
 #include "image.h"
 
 int registerNativeTgNetFunctions(JavaVM *vm, JNIEnv *env);
@@ -19,10 +19,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 	if ((*vm)->GetEnv(vm, (void **) &env, JNI_VERSION_1_6) != JNI_OK) {
 		return -1;
 	}
-    
-    if (sqliteOnJNILoad(vm, reserved, env) == -1) {
-        return -1;
-    }
     
     if (imageOnJNILoad(vm, reserved, env) == -1) {
         return -1;
@@ -58,4 +54,17 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_aesIgeEncryption(JNIEnv *en
     }
     (*env)->ReleaseByteArrayElements(env, key, keyBuff, JNI_ABORT);
     (*env)->ReleaseByteArrayElements(env, iv, ivBuff, 0);
+}
+
+JNIEXPORT jstring Java_org_telegram_messenger_Utilities_readlink(JNIEnv *env, jclass class, jstring path) {
+    static char buf[1000];
+    char *fileName = (*env)->GetStringUTFChars(env, path, NULL);
+    int result = readlink(fileName, buf, 999);
+    jstring value = 0;
+    if (result != -1) {
+        buf[result] = '\0';
+        value = (*env)->NewStringUTF(env, buf);
+    }
+    (*env)->ReleaseStringUTFChars(env, path, fileName);
+    return value;
 }

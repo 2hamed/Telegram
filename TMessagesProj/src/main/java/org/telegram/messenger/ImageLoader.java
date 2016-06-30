@@ -23,7 +23,6 @@ import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Environment;
-import android.os.ParcelFileDescriptor;
 import android.provider.MediaStore;
 
 import org.telegram.tgnet.ConnectionsManager;
@@ -33,7 +32,6 @@ import org.telegram.ui.Components.AnimatedFileDrawable;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -81,7 +79,6 @@ public class ImageLoader {
     private HashMap<String, Runnable> retryHttpsTasks = new HashMap<>();
     private int currentHttpFileLoadTasksCount = 0;
 
-    public VMRuntimeHack runtimeHack = null;
     private String ignoreRemoval = null;
 
     private volatile long lastCacheOutTime = 0;
@@ -633,7 +630,7 @@ public class ImageLoader {
                         BitmapFactory.Options opts = new BitmapFactory.Options();
                         opts.inSampleSize = 1;
 
-                        if (Build.VERSION.SDK_INT >= 14 && Build.VERSION.SDK_INT < 21) {
+                        if (Build.VERSION.SDK_INT < 21) {
                             opts.inPurgeable = true;
                         }
 
@@ -687,9 +684,6 @@ public class ImageLoader {
                             } else if (blurType == 0 && opts.inPurgeable) {
                                 Utilities.pinBitmap(image);
                             }
-                            if (runtimeHack != null) {
-                                runtimeHack.trackFree(image.getRowBytes() * image.getHeight());
-                            }
                         }
                     } catch (Throwable e) {
                         FileLog.e("tmessages", e);
@@ -717,9 +711,6 @@ public class ImageLoader {
                         }
 
                         int delay = 20;
-                        if (runtimeHack != null) {
-                            delay = 60;
-                        }
                         if (mediaId != null) {
                             delay = 0;
                         }
@@ -784,7 +775,7 @@ public class ImageLoader {
                         } else {
                             opts.inPreferredConfig = Bitmap.Config.RGB_565;
                         }
-                        if (Build.VERSION.SDK_INT >= 14 && Build.VERSION.SDK_INT < 21) {
+                        if (Build.VERSION.SDK_INT < 21) {
                             opts.inPurgeable = true;
                         }
 
@@ -852,9 +843,6 @@ public class ImageLoader {
                             if (!blured && opts.inPurgeable) {
                                 Utilities.pinBitmap(image);
                             }
-                            if (runtimeHack != null && image != null) {
-                                runtimeHack.trackFree(image.getRowBytes() * image.getHeight());
-                            }
                         }
                     } catch (Throwable e) {
                         //don't promt
@@ -879,9 +867,6 @@ public class ImageLoader {
                             toSet = bitmapDrawable;
                         } else {
                             Bitmap image = bitmapDrawable.getBitmap();
-                            if (runtimeHack != null) {
-                                runtimeHack.trackAlloc(image.getRowBytes() * image.getHeight());
-                            }
                             image.recycle();
                         }
                     }
@@ -1001,8 +986,8 @@ public class ImageLoader {
                 }
             }
             if (imageReceiverArray.size() == 0) {
-                for (ImageReceiver receiver : imageReceiverArray) {
-                    imageLoadingByTag.remove(receiver.getTag(thumb));
+                for (int a = 0; a < imageReceiverArray.size(); a++) {
+                    imageLoadingByTag.remove(imageReceiverArray.get(a).getTag(thumb));
                 }
                 imageReceiverArray.clear();
                 if (location != null) {
@@ -1100,19 +1085,10 @@ public class ImageLoader {
 
         int cacheSize = Math.min(15, ((ActivityManager) ApplicationLoader.applicationContext.getSystemService(Context.ACTIVITY_SERVICE)).getMemoryClass() / 7) * 1024 * 1024;
 
-        if (Build.VERSION.SDK_INT < 11) {
-            runtimeHack = new VMRuntimeHack();
-            cacheSize = 1024 * 1024 * 3;
-        }
         memCache = new LruCache(cacheSize) {
             @Override
             protected int sizeOf(String key, BitmapDrawable value) {
-                Bitmap b = value.getBitmap();
-                if (Build.VERSION.SDK_INT < 12) {
-                    return b.getRowBytes() * b.getHeight();
-                } else {
-                    return b.getByteCount();
-                }
+                return value.getBitmap().getByteCount();
             }
 
             @Override
@@ -1123,9 +1099,6 @@ public class ImageLoader {
                 final Integer count = bitmapUseCounts.get(key);
                 if (count == null || count == 0) {
                     Bitmap b = oldValue.getBitmap();
-                    if (runtimeHack != null) {
-                        runtimeHack.trackAlloc(b.getRowBytes() * b.getHeight());
-                    }
                     if (!b.isRecycled()) {
                         b.recycle();
                     }
@@ -1193,8 +1166,8 @@ public class ImageLoader {
                                 AndroidUtilities.addMediaToGallery(finalFile.toString());
                             }
                         }
-                        ImageLoader.this.fileDidLoaded(location, finalFile, type);
                         NotificationCenter.getInstance().postNotificationName(NotificationCenter.FileDidLoaded, location);
+                        ImageLoader.this.fileDidLoaded(location, finalFile, type);
                     }
                 });
             }
@@ -1233,18 +1206,7 @@ public class ImageLoader {
                 FileLog.e("tmessages", "file system changed");
                 Runnable r = new Runnable() {
                     public void run() {
-                        cacheOutQueue.postRunnable(new Runnable() {
-                            @Override
-                            public void run() {
-                                final HashMap<Integer, File> paths = createMediaPaths();
-                                AndroidUtilities.runOnUIThread(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        FileLoader.getInstance().setMediaDirs(paths);
-                                    }
-                                });
-                            }
-                        });
+                        checkMediaPaths();
                     }
                 };
                 if (Intent.ACTION_MEDIA_UNMOUNTED.equals(intent.getAction())) {
@@ -1285,6 +1247,10 @@ public class ImageLoader {
         mediaDirs.put(FileLoader.MEDIA_DIR_CACHE, cachePath);
         FileLoader.getInstance().setMediaDirs(mediaDirs);
 
+        checkMediaPaths();
+    }
+
+    public void checkMediaPaths() {
         cacheOutQueue.postRunnable(new Runnable() {
             @Override
             public void run() {
@@ -1702,7 +1668,7 @@ public class ImageLoader {
 
                     if (thumb != 2) {
                         CacheImage img = new CacheImage();
-                        if (httpLocation != null && (httpLocation.endsWith("mp4") || httpLocation.endsWith("gif")) || imageLocation instanceof TLRPC.Document && MessageObject.isGifDocument((TLRPC.Document) imageLocation)) {
+                        if (httpLocation != null && !httpLocation.startsWith("vthumb") && !httpLocation.startsWith("thumb") && (httpLocation.endsWith("mp4") || httpLocation.endsWith("gif")) || imageLocation instanceof TLRPC.Document && MessageObject.isGifDocument((TLRPC.Document) imageLocation)) {
                             img.animatedFile = true;
                         }
 
@@ -1801,7 +1767,7 @@ public class ImageLoader {
         }
         if (httpLocation != null) {
             key = Utilities.MD5(httpLocation);
-            url = key + "." + getHttpUrlExtension(httpLocation);
+            url = key + "." + getHttpUrlExtension(httpLocation, "jpg");
         } else if (imageLocation != null) {
             if (imageLocation instanceof TLRPC.FileLocation) {
                 TLRPC.FileLocation location = (TLRPC.FileLocation) imageLocation;
@@ -1818,11 +1784,15 @@ public class ImageLoader {
                 key = document.dc_id + "_" + document.id;
                 String docExt = FileLoader.getDocumentFileName(document);
                 int idx;
-                if (docExt == null || (idx = docExt.lastIndexOf(".")) == -1) {
+                if (docExt == null || (idx = docExt.lastIndexOf('.')) == -1) {
                     docExt = "";
                 } else {
                     docExt = docExt.substring(idx);
-                    if (docExt.length() <= 1) {
+                }
+                if (docExt.length() <= 1) {
+                    if (document.mime_type != null && document.mime_type.equals("video/mp4")) {
+                        docExt = ".mp4";
+                    } else {
                         docExt = "";
                     }
                 }
@@ -1942,29 +1912,16 @@ public class ImageLoader {
         }
         while (currentHttpTasksCount < 4 && !httpTasks.isEmpty()) {
             HttpImageTask task = httpTasks.poll();
-            if (android.os.Build.VERSION.SDK_INT >= 11) {
-                task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, null, null, null);
-            } else {
-                task.execute(null, null, null);
-            }
+            task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, null, null, null);
             currentHttpTasksCount++;
         }
     }
 
-    public void loadHttpFile(String url, String extension) {
+    public void loadHttpFile(String url, String defaultExt) {
         if (url == null || url.length() == 0 || httpFileLoadTasksByKeys.containsKey(url)) {
             return;
         }
-        String ext = extension;
-        if (ext == null) {
-            int idx = url.lastIndexOf(".");
-            if (idx != -1) {
-                ext = url.substring(idx + 1);
-            }
-            if (ext == null || ext.length() == 0 || ext.length() > 4) {
-                ext = "jpg";
-            }
-        }
+        String ext = getHttpUrlExtension(url, defaultExt);
         File file = new File(FileLoader.getInstance().getDirectory(FileLoader.MEDIA_DIR_CACHE), Utilities.MD5(url) + "_temp." + ext);
         file.delete();
 
@@ -2020,11 +1977,7 @@ public class ImageLoader {
                 }
                 while (currentHttpFileLoadTasksCount < 2 && !httpFileLoadTasks.isEmpty()) {
                     HttpFileTask task = httpFileLoadTasks.poll();
-                    if (android.os.Build.VERSION.SDK_INT >= 11) {
-                        task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, null, null, null);
-                    } else {
-                        task.execute(null, null, null);
-                    }
+                    task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, null, null, null);
                     currentHttpFileLoadTasksCount++;
                 }
             }
@@ -2034,8 +1987,7 @@ public class ImageLoader {
     public static Bitmap loadBitmap(String path, Uri uri, float maxWidth, float maxHeight, boolean useMaxScale) {
         BitmapFactory.Options bmOptions = new BitmapFactory.Options();
         bmOptions.inJustDecodeBounds = true;
-        FileDescriptor fileDescriptor = null;
-        ParcelFileDescriptor parcelFD = null;
+        InputStream inputStream = null;
 
         if (path == null && uri != null && uri.getScheme() != null) {
             String imageFilePath = null;
@@ -2055,9 +2007,10 @@ public class ImageLoader {
         } else if (uri != null) {
             boolean error = false;
             try {
-                parcelFD = ApplicationLoader.applicationContext.getContentResolver().openFileDescriptor(uri, "r");
-                fileDescriptor = parcelFD.getFileDescriptor();
-                BitmapFactory.decodeFileDescriptor(fileDescriptor, null, bmOptions);
+                inputStream = ApplicationLoader.applicationContext.getContentResolver().openInputStream(uri);
+                BitmapFactory.decodeStream(inputStream, null, bmOptions);
+                inputStream.close();
+                inputStream = ApplicationLoader.applicationContext.getContentResolver().openInputStream(uri);
             } catch (Throwable e) {
                 FileLog.e("tmessages", e);
                 return null;
@@ -2071,7 +2024,7 @@ public class ImageLoader {
         }
         bmOptions.inJustDecodeBounds = false;
         bmOptions.inSampleSize = (int) scaleFactor;
-        bmOptions.inPurgeable = Build.VERSION.SDK_INT >= 14 && Build.VERSION.SDK_INT < 21;
+        bmOptions.inPurgeable = Build.VERSION.SDK_INT < 21;
 
         String exifPath = null;
         if (path != null) {
@@ -2141,7 +2094,7 @@ public class ImageLoader {
             }
         } else if (uri != null) {
             try {
-                b = BitmapFactory.decodeFileDescriptor(fileDescriptor, null, bmOptions);
+                b = BitmapFactory.decodeStream(inputStream, null, bmOptions);
                 if (b != null) {
                     if (bmOptions.inPurgeable) {
                         Utilities.pinBitmap(b);
@@ -2156,7 +2109,7 @@ public class ImageLoader {
                 FileLog.e("tmessages", e);
             } finally {
                 try {
-                    parcelFD.close();
+                    inputStream.close();
                 } catch (Throwable e) {
                     FileLog.e("tmessages", e);
                 }
@@ -2279,14 +2232,14 @@ public class ImageLoader {
         }
     }
 
-    public static String getHttpUrlExtension(String url) {
+    public static String getHttpUrlExtension(String url, String defaultExt) {
         String ext = null;
-        int idx = url.lastIndexOf(".");
+        int idx = url.lastIndexOf('.');
         if (idx != -1) {
             ext = url.substring(idx + 1);
         }
         if (ext == null || ext.length() == 0 || ext.length() > 4) {
-            ext = "jpg";
+            ext = defaultExt;
         }
         return ext;
     }
@@ -2299,10 +2252,6 @@ public class ImageLoader {
                     photoSize = size;
                     break;
                 }
-            }
-        } else if (message.media instanceof TLRPC.TL_messageMediaVideo) {
-            if (message.media.video.thumb instanceof TLRPC.TL_photoCachedSize) {
-                photoSize = message.media.video.thumb;
             }
         } else if (message.media instanceof TLRPC.TL_messageMediaDocument) {
             if (message.media.document.thumb instanceof TLRPC.TL_photoCachedSize) {
@@ -2350,8 +2299,6 @@ public class ImageLoader {
                         break;
                     }
                 }
-            } else if (message.media instanceof TLRPC.TL_messageMediaVideo) {
-                message.media.video.thumb = newPhotoSize;
             } else if (message.media instanceof TLRPC.TL_messageMediaDocument) {
                 message.media.document.thumb = newPhotoSize;
             } else if (message.media instanceof TLRPC.TL_messageMediaWebPage) {
@@ -2369,7 +2316,8 @@ public class ImageLoader {
         if (messages == null || messages.isEmpty()) {
             return;
         }
-        for (TLRPC.Message message : messages) {
+        for (int a = 0; a < messages.size(); a++) {
+            TLRPC.Message message = messages.get(a);
             saveMessageThumbs(message);
         }
     }

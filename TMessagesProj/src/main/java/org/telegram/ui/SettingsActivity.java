@@ -8,6 +8,8 @@
 
 package org.telegram.ui;
 
+import android.animation.Animator;
+import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.animation.StateListAnimator;
 import android.annotation.SuppressLint;
@@ -49,18 +51,19 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.AnimationCompat.AnimatorListenerAdapterProxy;
-import org.telegram.messenger.AnimationCompat.AnimatorSetProxy;
-import org.telegram.messenger.AnimationCompat.ObjectAnimatorProxy;
+import org.telegram.messenger.AnimatorListenerAdapterProxy;
 import org.telegram.PhoneFormat.PhoneFormat;
+import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.MediaController;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.FileLoader;
+import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.RequestDelegate;
 import org.telegram.tgnet.SerializedData;
@@ -75,7 +78,6 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.MessageObject;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.Adapters.BaseFragmentAdapter;
-import org.telegram.messenger.AnimationCompat.ViewProxy;
 import org.telegram.ui.Cells.CheckBoxCell;
 import org.telegram.ui.Cells.TextInfoCell;
 import org.telegram.ui.Cells.EmptyCell;
@@ -93,6 +95,7 @@ import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.NumberPicker;
+import org.telegram.ui.ActionBar.Theme;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -106,7 +109,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
     private TextView nameTextView;
     private TextView onlineTextView;
     private ImageView writeButton;
-    private AnimatorSetProxy writeButtonAnimation;
+    private AnimatorSet writeButtonAnimation;
     private AvatarUpdater avatarUpdater = new AvatarUpdater();
     private View extraHeightView;
     private View shadowView;
@@ -133,14 +136,18 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
     private int saveToGalleryRow;
     private int messagesSectionRow;
     private int messagesSectionRow2;
+    private int customTabsRow;
+    private int directShareRow;
     private int textSizeRow;
     private int stickersRow;
     private int cacheRow;
+    private int raiseToSpeakRow;
     private int sendByEnterRow;
     private int supportSectionRow;
     private int supportSectionRow2;
     private int askQuestionRow;
     private int telegramFaqRow;
+    private int privacyPolicyRow;
     private int sendLogsRow;
     private int clearLogsRow;
     private int switchBackendButtonRow;
@@ -243,20 +250,24 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         mobileDownloadRow = rowCount++;
         wifiDownloadRow = rowCount++;
         roamingDownloadRow = rowCount++;
-        if (Build.VERSION.SDK_INT >= 11) {
-            autoplayGifsRow = rowCount++;
-        }
+        autoplayGifsRow = rowCount++;
         saveToGalleryRow = rowCount++;
         messagesSectionRow = rowCount++;
         messagesSectionRow2 = rowCount++;
+        customTabsRow = rowCount++;
+        if (Build.VERSION.SDK_INT >= 23) {
+            directShareRow = rowCount++;
+        }
         textSizeRow = rowCount++;
         stickersRow = rowCount++;
         cacheRow = rowCount++;
+        raiseToSpeakRow = rowCount++;
         sendByEnterRow = rowCount++;
         supportSectionRow = rowCount++;
         supportSectionRow2 = rowCount++;
         askQuestionRow = rowCount++;
         telegramFaqRow = rowCount++;
+        privacyPolicyRow = rowCount++;
         if (BuildVars.DEBUG_VERSION) {
             sendLogsRow = rowCount++;
             clearLogsRow = rowCount++;
@@ -267,7 +278,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         //contactsReimportRow = rowCount++;
         //contactsSortRow = rowCount++;
 
-        MessagesController.getInstance().loadFullUser(UserConfig.getCurrentUser(), classGuid);
+        MessagesController.getInstance().loadFullUser(UserConfig.getCurrentUser(), classGuid, true);
 
         return true;
     }
@@ -286,7 +297,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
     @Override
     public View createView(Context context) {
         actionBar.setBackgroundColor(AvatarDrawable.getProfileBackColorForId(5));
-        actionBar.setItemsBackground(AvatarDrawable.getButtonColorForId(5));
+        actionBar.setItemsBackgroundColor(AvatarDrawable.getButtonColorForId(5));
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
         actionBar.setAddToContainer(false);
         extraHeight = 88;
@@ -410,6 +421,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     final TextView message = new TextView(getParentActivity());
                     message.setText(Html.fromHtml(LocaleController.getString("AskAQuestionInfo", R.string.AskAQuestionInfo)));
                     message.setTextSize(18);
+                    message.setLinkTextColor(Theme.MSG_LINK_TEXT_COLOR);
                     message.setPadding(AndroidUtilities.dp(8), AndroidUtilities.dp(5), AndroidUtilities.dp(8), AndroidUtilities.dp(6));
                     message.setMovementMethod(new LinkMovementMethodMy());
 
@@ -436,6 +448,11 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     if (view instanceof TextCheckCell) {
                         ((TextCheckCell) view).setChecked(!send);
                     }
+                } else if (i == raiseToSpeakRow) {
+                    MediaController.getInstance().toogleRaiseToSpeak();
+                    if (view instanceof TextCheckCell) {
+                        ((TextCheckCell) view).setChecked(MediaController.getInstance().canRaiseToSpeak());
+                    }
                 } else if (i == autoplayGifsRow) {
                     MediaController.getInstance().toggleAutoplayGifs();
                     if (view instanceof TextCheckCell) {
@@ -445,6 +462,16 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     MediaController.getInstance().toggleSaveToGallery();
                     if (view instanceof TextCheckCell) {
                         ((TextCheckCell) view).setChecked(MediaController.getInstance().canSaveToGallery());
+                    }
+                } else if (i == customTabsRow) {
+                    MediaController.getInstance().toggleCustomTabs();
+                    if (view instanceof TextCheckCell) {
+                        ((TextCheckCell) view).setChecked(MediaController.getInstance().canCustomTabs());
+                    }
+                } else if(i == directShareRow) {
+                    MediaController.getInstance().toggleDirectShare();
+                    if (view instanceof TextCheckCell) {
+                        ((TextCheckCell) view).setChecked(MediaController.getInstance().canDirectShare());
                     }
                 } else if (i == privacyRow) {
                     presentFragment(new PrivacySettingsActivity());
@@ -466,12 +493,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null);
                     showDialog(builder.create());
                 } else if (i == telegramFaqRow) {
-                    try {
-                        Intent pickIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(LocaleController.getString("TelegramFaqUrl", R.string.TelegramFaqUrl)));
-                        getParentActivity().startActivityForResult(pickIntent, 500);
-                    } catch (Exception e) {
-                        FileLog.e("tmessages", e);
-                    }
+                    Browser.openUrl(getParentActivity(), LocaleController.getString("TelegramFaqUrl", R.string.TelegramFaqUrl));
+                } else if (i == privacyPolicyRow) {
+                    Browser.openUrl(getParentActivity(), LocaleController.getString("PrivacyPolicyUrl", R.string.PrivacyPolicyUrl));
                 } else if (i == contactsReimportRow) {
                     //not implemented
                 } else if (i == contactsSortRow) {
@@ -514,7 +538,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                         mask = MediaController.getInstance().roamingDownloadMask;
                     }
 
-                    builder.setApplyTopPaddings(false);
+                    builder.setApplyTopPadding(false);
+                    builder.setApplyBottomPadding(false);
                     LinearLayout linearLayout = new LinearLayout(getParentActivity());
                     linearLayout.setOrientation(LinearLayout.VERTICAL);
                     for (int a = 0; a < 6; a++) {
@@ -535,12 +560,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                             maskValues[a] = (mask & MediaController.AUTODOWNLOAD_MASK_MUSIC) != 0;
                             name = LocaleController.getString("AttachMusic", R.string.AttachMusic);
                         } else if (a == 5) {
-                            if (Build.VERSION.SDK_INT >= 11) {
-                                maskValues[a] = (mask & MediaController.AUTODOWNLOAD_MASK_GIF) != 0;
-                                name = LocaleController.getString("AttachGif", R.string.AttachGif);
-                            } else {
-                                continue;
-                            }
+                            maskValues[a] = (mask & MediaController.AUTODOWNLOAD_MASK_GIF) != 0;
+                            name = LocaleController.getString("AttachGif", R.string.AttachGif);
                         }
                         CheckBoxCell checkBoxCell = new CheckBoxCell(getParentActivity());
                         checkBoxCell.setTag(a);
@@ -557,10 +578,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                             }
                         });
                     }
-                    BottomSheet.BottomSheetCell cell = new BottomSheet.BottomSheetCell(getParentActivity(), 2);
+                    BottomSheet.BottomSheetCell cell = new BottomSheet.BottomSheetCell(getParentActivity(), 1);
                     cell.setBackgroundResource(R.drawable.list_selector);
                     cell.setTextAndIcon(LocaleController.getString("Save", R.string.Save).toUpperCase(), 0);
-                    cell.setTextColor(0xffcd5a5a);
+                    cell.setTextColor(Theme.AUTODOWNLOAD_SHEET_SAVE_TEXT_COLOR);
                     cell.setOnClickListener(new View.OnClickListener() {
                         @Override
                         public void onClick(View v) {
@@ -621,10 +642,49 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             }
         });
 
+        listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+
+            private int pressCount = 0;
+
+            @Override
+            public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
+                if (position == versionRow) {
+                    pressCount++;
+                    if (pressCount >= 2) {
+                        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+                        builder.setTitle("Debug Menu");
+                        builder.setItems(new CharSequence[]{
+                                "Import Contacts",
+                                "Reload Contacts"
+                        }, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                if (which == 0) {
+                                    ContactsController.getInstance().forceImportContacts();
+                                } else if (which == 1) {
+                                    ContactsController.getInstance().loadContacts(false, true);
+                                }
+                            }
+                        });
+                        builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null);
+                        showDialog(builder.create());
+                    } else {
+                        try {
+                            Toast.makeText(getParentActivity(), "¯\\_(ツ)_/¯", Toast.LENGTH_SHORT).show();
+                        } catch (Exception e) {
+                            FileLog.e("tmessages", e);
+                        }
+                    }
+                    return true;
+                }
+                return false;
+            }
+        });
+
         frameLayout.addView(actionBar);
 
         extraHeightView = new View(context);
-        ViewProxy.setPivotY(extraHeightView, 0);
+        extraHeightView.setPivotY(0);
         extraHeightView.setBackgroundColor(AvatarDrawable.getProfileBackColorForId(5));
         frameLayout.addView(extraHeightView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 88));
 
@@ -634,14 +694,14 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         avatarImage = new BackupImageView(context);
         avatarImage.setRoundRadius(AndroidUtilities.dp(21));
-        ViewProxy.setPivotX(avatarImage, 0);
-        ViewProxy.setPivotY(avatarImage, 0);
+        avatarImage.setPivotX(0);
+        avatarImage.setPivotY(0);
         frameLayout.addView(avatarImage, LayoutHelper.createFrame(42, 42, Gravity.TOP | Gravity.LEFT, 64, 0, 0, 0));
         avatarImage.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 TLRPC.User user = MessagesController.getInstance().getUser(UserConfig.getClientUserId());
-                if (user.photo != null && user.photo.photo_big != null) {
+                if (user != null && user.photo != null && user.photo.photo_big != null) {
                     PhotoViewer.getInstance().setParentActivity(getParentActivity());
                     PhotoViewer.getInstance().openPhoto(user.photo.photo_big, SettingsActivity.this);
                 }
@@ -657,8 +717,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         nameTextView.setEllipsize(TextUtils.TruncateAt.END);
         nameTextView.setGravity(Gravity.LEFT);
         nameTextView.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"));
-        ViewProxy.setPivotX(nameTextView, 0);
-        ViewProxy.setPivotY(nameTextView, 0);
+        nameTextView.setPivotX(0);
+        nameTextView.setPivotY(0);
         frameLayout.addView(nameTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP, 118, 0, 48, 0));
 
         onlineTextView = new TextView(context);
@@ -787,11 +847,11 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 object.viewY = coords[1] - AndroidUtilities.statusBarHeight;
                 object.parentView = avatarImage;
                 object.imageReceiver = avatarImage.getImageReceiver();
-                object.user_id = UserConfig.getClientUserId();
+                object.dialogId = UserConfig.getClientUserId();
                 object.thumb = object.imageReceiver.getBitmap();
                 object.size = -1;
                 object.radius = avatarImage.getImageReceiver().getRoundRadius();
-                object.scale = ViewProxy.getScaleX(avatarImage);
+                object.scale = avatarImage.getScaleX();
                 return object;
             }
         }
@@ -835,7 +895,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         return 0;
     }
 
-    public void performAskAQuestion() {
+    private void performAskAQuestion() {
         final SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
         int uid = preferences.getInt("support_id", 0);
         TLRPC.User supportUser = null;
@@ -973,22 +1033,17 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             if (layoutParams.topMargin != newTop) {
                 layoutParams.topMargin = newTop;
                 listView.setLayoutParams(layoutParams);
-                ViewProxy.setTranslationY(extraHeightView, newTop);
+                extraHeightView.setTranslationY(newTop);
             }
         }
 
         if (avatarImage != null) {
             float diff = extraHeight / (float) AndroidUtilities.dp(88);
-            ViewProxy.setScaleY(extraHeightView, diff);
-            ViewProxy.setTranslationY(shadowView, newTop + extraHeight);
+            extraHeightView.setScaleY(diff);
+            shadowView.setTranslationY(newTop + extraHeight);
 
-            if (Build.VERSION.SDK_INT < 11) {
-                layoutParams = (FrameLayout.LayoutParams) writeButton.getLayoutParams();
-                layoutParams.topMargin = (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0) + ActionBar.getCurrentActionBarHeight() + extraHeight - AndroidUtilities.dp(29.5f);
-                writeButton.setLayoutParams(layoutParams);
-            } else {
-                ViewProxy.setTranslationY(writeButton, (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0) + ActionBar.getCurrentActionBarHeight() + extraHeight - AndroidUtilities.dp(29.5f));
-            }
+
+            writeButton.setTranslationY((actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0) + ActionBar.getCurrentActionBarHeight() + extraHeight - AndroidUtilities.dp(29.5f));
 
             final boolean setVisible = diff > 0.2f;
             boolean currentVisible = writeButton.getTag() == null;
@@ -1000,32 +1055,31 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     writeButton.setTag(0);
                 }
                 if (writeButtonAnimation != null) {
-                    AnimatorSetProxy old = writeButtonAnimation;
+                    AnimatorSet old = writeButtonAnimation;
                     writeButtonAnimation = null;
                     old.cancel();
                 }
-                writeButtonAnimation = new AnimatorSetProxy();
+                writeButtonAnimation = new AnimatorSet();
                 if (setVisible) {
                     writeButtonAnimation.setInterpolator(new DecelerateInterpolator());
                     writeButtonAnimation.playTogether(
-                            ObjectAnimatorProxy.ofFloat(writeButton, "scaleX", 1.0f),
-                            ObjectAnimatorProxy.ofFloat(writeButton, "scaleY", 1.0f),
-                            ObjectAnimatorProxy.ofFloat(writeButton, "alpha", 1.0f)
+                            ObjectAnimator.ofFloat(writeButton, "scaleX", 1.0f),
+                            ObjectAnimator.ofFloat(writeButton, "scaleY", 1.0f),
+                            ObjectAnimator.ofFloat(writeButton, "alpha", 1.0f)
                     );
                 } else {
                     writeButtonAnimation.setInterpolator(new AccelerateInterpolator());
                     writeButtonAnimation.playTogether(
-                            ObjectAnimatorProxy.ofFloat(writeButton, "scaleX", 0.2f),
-                            ObjectAnimatorProxy.ofFloat(writeButton, "scaleY", 0.2f),
-                            ObjectAnimatorProxy.ofFloat(writeButton, "alpha", 0.0f)
+                            ObjectAnimator.ofFloat(writeButton, "scaleX", 0.2f),
+                            ObjectAnimator.ofFloat(writeButton, "scaleY", 0.2f),
+                            ObjectAnimator.ofFloat(writeButton, "alpha", 0.0f)
                     );
                 }
                 writeButtonAnimation.setDuration(150);
                 writeButtonAnimation.addListener(new AnimatorListenerAdapterProxy() {
                     @Override
-                    public void onAnimationEnd(Object animation) {
+                    public void onAnimationEnd(Animator animation) {
                         if (writeButtonAnimation != null && writeButtonAnimation.equals(animation)) {
-                            writeButton.clearAnimation();
                             writeButton.setVisibility(setVisible ? View.VISIBLE : View.GONE);
                             writeButtonAnimation = null;
                         }
@@ -1034,17 +1088,17 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 writeButtonAnimation.start();
             }
 
-            ViewProxy.setScaleX(avatarImage, (42 + 18 * diff) / 42.0f);
-            ViewProxy.setScaleY(avatarImage, (42 + 18 * diff) / 42.0f);
+            avatarImage.setScaleX((42 + 18 * diff) / 42.0f);
+            avatarImage.setScaleY((42 + 18 * diff) / 42.0f);
             float avatarY = (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0) + ActionBar.getCurrentActionBarHeight() / 2.0f * (1.0f + diff) - 21 * AndroidUtilities.density + 27 * AndroidUtilities.density * diff;
-            ViewProxy.setTranslationX(avatarImage, -AndroidUtilities.dp(47) * diff);
-            ViewProxy.setTranslationY(avatarImage, (float) Math.ceil(avatarY));
-            ViewProxy.setTranslationX(nameTextView, -21 * AndroidUtilities.density * diff);
-            ViewProxy.setTranslationY(nameTextView, (float) Math.floor(avatarY) - (float) Math.ceil(AndroidUtilities.density) + (float) Math.floor(7 * AndroidUtilities.density * diff));
-            ViewProxy.setTranslationX(onlineTextView, -21 * AndroidUtilities.density * diff);
-            ViewProxy.setTranslationY(onlineTextView, (float) Math.floor(avatarY) + AndroidUtilities.dp(22) + (float )Math.floor(11 * AndroidUtilities.density) * diff);
-            ViewProxy.setScaleX(nameTextView, 1.0f + 0.12f * diff);
-            ViewProxy.setScaleY(nameTextView, 1.0f + 0.12f * diff);
+            avatarImage.setTranslationX(-AndroidUtilities.dp(47) * diff);
+            avatarImage.setTranslationY((float) Math.ceil(avatarY));
+            nameTextView.setTranslationX(-21 * AndroidUtilities.density * diff);
+            nameTextView.setTranslationY((float) Math.floor(avatarY) - (float) Math.ceil(AndroidUtilities.density) + (float) Math.floor(7 * AndroidUtilities.density * diff));
+            onlineTextView.setTranslationX(-21 * AndroidUtilities.density * diff);
+            onlineTextView.setTranslationY((float) Math.floor(avatarY) + AndroidUtilities.dp(22) + (float )Math.floor(11 * AndroidUtilities.density) * diff);
+            nameTextView.setScaleX(1.0f + 0.12f * diff);
+            nameTextView.setScaleY(1.0f + 0.12f * diff);
         }
     }
 
@@ -1073,7 +1127,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             photoBig = user.photo.photo_big;
         }
         AvatarDrawable avatarDrawable = new AvatarDrawable(user, true);
-        avatarDrawable.setColor(0xff5c98cd);
+
+        avatarDrawable.setColor(Theme.ACTION_BAR_MAIN_AVATAR_COLOR);
         if (avatarImage != null) {
             avatarImage.setImage(photo, "50_50", avatarDrawable);
             avatarImage.getImageReceiver().setVisible(!PhotoViewer.getInstance().isShowingImage(photoBig), false);
@@ -1127,7 +1182,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     i == askQuestionRow || i == sendLogsRow || i == sendByEnterRow || i == autoplayGifsRow || i == privacyRow || i == wifiDownloadRow ||
                     i == mobileDownloadRow || i == clearLogsRow || i == roamingDownloadRow || i == languageRow || i == usernameRow ||
                     i == switchBackendButtonRow || i == telegramFaqRow || i == contactsSortRow || i == contactsReimportRow || i == saveToGalleryRow ||
-                    i == stickersRow || i == cacheRow;
+                    i == stickersRow || i == cacheRow || i == raiseToSpeakRow || i == privacyPolicyRow || i == customTabsRow || i == directShareRow || i == versionRow;
         }
 
         @Override
@@ -1211,6 +1266,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     textCell.setText(LocaleController.getString("Stickers", R.string.Stickers), true);
                 } else if (i == cacheRow) {
                     textCell.setText(LocaleController.getString("CacheSettings", R.string.CacheSettings), true);
+                } else if (i == privacyPolicyRow) {
+                    textCell.setText(LocaleController.getString("PrivacyPolicy", R.string.PrivacyPolicy), true);
                 }
             } else if (type == 3) {
                 if (view == null) {
@@ -1227,6 +1284,12 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     textCell.setTextAndCheck(LocaleController.getString("SaveToGallerySettings", R.string.SaveToGallerySettings), MediaController.getInstance().canSaveToGallery(), false);
                 } else if (i == autoplayGifsRow) {
                     textCell.setTextAndCheck(LocaleController.getString("AutoplayGifs", R.string.AutoplayGifs), MediaController.getInstance().canAutoplayGifs(), true);
+                } else if (i == raiseToSpeakRow) {
+                    textCell.setTextAndCheck(LocaleController.getString("RaiseToSpeak", R.string.RaiseToSpeak), MediaController.getInstance().canRaiseToSpeak(), true);
+                } else if (i == customTabsRow) {
+                    textCell.setTextAndValueAndCheck(LocaleController.getString("ChromeCustomTabs", R.string.ChromeCustomTabs), LocaleController.getString("ChromeCustomTabsInfo", R.string.ChromeCustomTabsInfo), MediaController.getInstance().canCustomTabs(), false, true);
+                } else if (i == directShareRow) {
+                    textCell.setTextAndValueAndCheck(LocaleController.getString("DirectShare", R.string.DirectShare), LocaleController.getString("DirectShareInfo", R.string.DirectShareInfo), MediaController.getInstance().canDirectShare(), false, true);
                 }
             } else if (type == 4) {
                 if (view == null) {
@@ -1248,7 +1311,23 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     view = new TextInfoCell(mContext);
                     try {
                         PackageInfo pInfo = ApplicationLoader.applicationContext.getPackageManager().getPackageInfo(ApplicationLoader.applicationContext.getPackageName(), 0);
-                        ((TextInfoCell) view).setText(String.format(Locale.US, "Telegram for Android v%s (%d)", pInfo.versionName, pInfo.versionCode));
+                        int code = pInfo.versionCode / 10;
+                        String abi = "";
+                        switch (pInfo.versionCode % 10) {
+                            case 0:
+                                abi = "arm";
+                                break;
+                            case 1:
+                                abi = "arm-v7a";
+                                break;
+                            case 2:
+                                abi = "x86";
+                                break;
+                            case 3:
+                                abi = "universal";
+                                break;
+                        }
+                        ((TextInfoCell) view).setText(String.format(Locale.US, "Telegram for Android v%s (%d) %s", pInfo.versionName, code, abi));
                     } catch (Exception e) {
                         FileLog.e("tmessages", e);
                     }
@@ -1301,13 +1380,11 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                         }
                         text += LocaleController.getString("AttachMusic", R.string.AttachMusic);
                     }
-                    if (Build.VERSION.SDK_INT >= 11) {
-                        if ((mask & MediaController.AUTODOWNLOAD_MASK_GIF) != 0) {
-                            if (text.length() != 0) {
-                                text += ", ";
-                            }
-                            text += LocaleController.getString("AttachGif", R.string.AttachGif);
+                    if ((mask & MediaController.AUTODOWNLOAD_MASK_GIF) != 0) {
+                        if (text.length() != 0) {
+                            text += ", ";
                         }
+                        text += LocaleController.getString("AttachGif", R.string.AttachGif);
                     }
                     if (text.length() == 0) {
                         text = LocaleController.getString("NoMediaAutoDownload", R.string.NoMediaAutoDownload);
@@ -1343,9 +1420,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             }
             if (i == settingsSectionRow || i == supportSectionRow || i == messagesSectionRow || i == mediaDownloadSection || i == contactsSectionRow) {
                 return 1;
-            } else if (i == enableAnimationsRow || i == sendByEnterRow || i == saveToGalleryRow || i == autoplayGifsRow) {
+            } else if (i == enableAnimationsRow || i == sendByEnterRow || i == saveToGalleryRow || i == autoplayGifsRow || i == raiseToSpeakRow || i == customTabsRow || i == directShareRow) {
                 return 3;
-            } else if (i == notificationRow || i == backgroundRow || i == askQuestionRow || i == sendLogsRow || i == privacyRow || i == clearLogsRow || i == switchBackendButtonRow || i == telegramFaqRow || i == contactsReimportRow || i == textSizeRow || i == languageRow || i == contactsSortRow || i == stickersRow || i == cacheRow) {
+            } else if (i == notificationRow || i == backgroundRow || i == askQuestionRow || i == sendLogsRow || i == privacyRow || i == clearLogsRow || i == switchBackendButtonRow || i == telegramFaqRow || i == contactsReimportRow || i == textSizeRow || i == languageRow || i == contactsSortRow || i == stickersRow || i == cacheRow || i == privacyPolicyRow) {
                 return 2;
             } else if (i == versionRow) {
                 return 5;
